@@ -1,7 +1,7 @@
 //! # faigz-rs
 //!
 //! A Rust wrapper for the faigz reentrant FASTA/FASTQ index library.
-//! 
+//!
 //! This library provides thread-safe, reentrant access to FASTA and FASTQ files
 //! using a shared index structure that can be safely accessed from multiple threads.
 //!
@@ -81,7 +81,7 @@ impl From<FastaFormat> for fai_format_options {
 }
 
 /// Shared FASTA index metadata
-/// 
+///
 /// This structure holds the shared metadata for a FASTA/FASTQ file that can be
 /// safely accessed from multiple threads. It uses reference counting to manage
 /// the lifetime of the underlying C structure.
@@ -100,34 +100,32 @@ impl std::fmt::Debug for FastaIndex {
 
 impl FastaIndex {
     /// Create a new FASTA index from a file path
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `path` - Path to the FASTA/FASTQ file
     /// * `format` - Format of the file (FASTA or FASTQ)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A new `FastaIndex` instance or an error if the file cannot be loaded
     pub fn new(path: &str, format: FastaFormat) -> FastaResult<Self> {
         let c_path = CString::new(path).map_err(|_| FastaError::InvalidPath(path.to_string()))?;
-        
-        let meta = unsafe {
-            faidx_meta_load(c_path.as_ptr(), format.into(), 0)
-        };
-        
+
+        let meta = unsafe { faidx_meta_load(c_path.as_ptr(), format.into(), 0) };
+
         if meta.is_null() {
             return Err(FastaError::IndexLoadError(path.to_string()));
         }
-        
+
         Ok(FastaIndex { meta })
     }
-    
+
     /// Get the number of sequences in the index
     pub fn num_sequences(&self) -> usize {
         unsafe { faidx_meta_nseq(self.meta) as usize }
     }
-    
+
     /// Get the name of the sequence at the given index
     pub fn sequence_name(&self, index: usize) -> Option<String> {
         let name_ptr = unsafe { faidx_meta_iseq(self.meta, index as c_int) };
@@ -138,7 +136,7 @@ impl FastaIndex {
             Some(c_str.to_string_lossy().to_string())
         }
     }
-    
+
     /// Get the length of the specified sequence
     pub fn sequence_length(&self, name: &str) -> Option<i64> {
         let c_name = CString::new(name).ok()?;
@@ -149,13 +147,13 @@ impl FastaIndex {
             Some(length)
         }
     }
-    
+
     /// Check if the index contains the specified sequence
     pub fn has_sequence(&self, name: &str) -> bool {
         let c_name = CString::new(name).unwrap_or_else(|_| CString::new("").unwrap());
         unsafe { faidx_meta_has_seq(self.meta, c_name.as_ptr()) != 0 }
     }
-    
+
     /// Get all sequence names in the index
     pub fn sequence_names(&self) -> Vec<String> {
         let mut names = Vec::new();
@@ -188,7 +186,7 @@ unsafe impl Send for FastaIndex {}
 unsafe impl Sync for FastaIndex {}
 
 /// FASTA reader for accessing sequences
-/// 
+///
 /// This structure provides thread-safe access to FASTA/FASTQ sequences using
 /// a shared index. Each reader maintains its own file handle but shares the
 /// index metadata.
@@ -199,135 +197,139 @@ pub struct FastaReader {
 
 impl FastaReader {
     /// Create a new FASTA reader from an index
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `index` - Shared FASTA index
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A new `FastaReader` instance or an error if the reader cannot be created
     pub fn new(index: &FastaIndex) -> FastaResult<Self> {
         let reader = unsafe { faidx_reader_create(index.meta) };
-        
+
         if reader.is_null() {
             return Err(FastaError::ReaderCreationError);
         }
-        
+
         Ok(FastaReader {
             reader,
             _index: Arc::new(index.clone()),
         })
     }
-    
+
     /// Fetch a sequence from the specified region
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `seqname` - Name of the sequence
     /// * `start` - Start position (0-based, inclusive)
     /// * `end` - End position (0-based, exclusive)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The sequence string or an error if the sequence cannot be fetched
     pub fn fetch_seq(&self, seqname: &str, start: i64, end: i64) -> FastaResult<String> {
-        let c_seqname = CString::new(seqname)
-            .map_err(|_| FastaError::SequenceNotFound(seqname.to_string()))?;
-        
+        let c_seqname =
+            CString::new(seqname).map_err(|_| FastaError::SequenceNotFound(seqname.to_string()))?;
+
         let mut len: i64 = 0;
         let seq_ptr = unsafe {
             faidx_reader_fetch_seq(self.reader, c_seqname.as_ptr(), start, end - 1, &mut len)
         };
-        
+
         if seq_ptr.is_null() {
             return Err(FastaError::SequenceNotFound(seqname.to_string()));
         }
-        
+
         let c_str = unsafe { CStr::from_ptr(seq_ptr) };
         let result = c_str.to_string_lossy().to_string();
-        
+
         unsafe {
             libc::free(seq_ptr as *mut c_void);
         }
-        
+
         Ok(result)
     }
-    
+
     /// Fetch the entire sequence
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `seqname` - Name of the sequence
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The complete sequence string or an error if the sequence cannot be fetched
     pub fn fetch_seq_all(&self, seqname: &str) -> FastaResult<String> {
-        let length = self._index.sequence_length(seqname)
+        let length = self
+            ._index
+            .sequence_length(seqname)
             .ok_or_else(|| FastaError::SequenceNotFound(seqname.to_string()))?;
-        
+
         self.fetch_seq(seqname, 0, length)
     }
-    
+
     /// Fetch quality scores for the specified region (FASTQ only)
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `seqname` - Name of the sequence
     /// * `start` - Start position (0-based, inclusive)
     /// * `end` - End position (0-based, exclusive)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The quality string or an error if the quality cannot be fetched
     pub fn fetch_qual(&self, seqname: &str, start: i64, end: i64) -> FastaResult<String> {
-        let c_seqname = CString::new(seqname)
-            .map_err(|_| FastaError::SequenceNotFound(seqname.to_string()))?;
-        
+        let c_seqname =
+            CString::new(seqname).map_err(|_| FastaError::SequenceNotFound(seqname.to_string()))?;
+
         let mut len: i64 = 0;
         let qual_ptr = unsafe {
             faidx_reader_fetch_qual(self.reader, c_seqname.as_ptr(), start, end - 1, &mut len)
         };
-        
+
         if qual_ptr.is_null() {
             return Err(FastaError::QualityNotAvailable);
         }
-        
+
         let c_str = unsafe { CStr::from_ptr(qual_ptr) };
         let result = c_str.to_string_lossy().to_string();
-        
+
         unsafe {
             libc::free(qual_ptr as *mut c_void);
         }
-        
+
         Ok(result)
     }
-    
+
     /// Parse a region string (e.g., "chr1:1000-2000") and fetch the sequence
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `region` - Region string in format "seqname:start-end"
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The sequence string or an error if the region cannot be parsed or fetched
     pub fn fetch_region(&self, region: &str) -> FastaResult<String> {
         // Simple region parsing - you might want to use the C function for more complex cases
         if let Some(colon_pos) = region.find(':') {
             let seqname = &region[..colon_pos];
             let range_part = &region[colon_pos + 1..];
-            
+
             if let Some(dash_pos) = range_part.find('-') {
                 let start_str = &range_part[..dash_pos];
                 let end_str = &range_part[dash_pos + 1..];
-                
-                let start: i64 = start_str.parse()
+
+                let start: i64 = start_str
+                    .parse()
                     .map_err(|_| FastaError::InvalidRegion(region.to_string()))?;
-                let end: i64 = end_str.parse()
+                let end: i64 = end_str
+                    .parse()
                     .map_err(|_| FastaError::InvalidRegion(region.to_string()))?;
-                
+
                 // Convert from 1-based to 0-based coordinates
                 self.fetch_seq(seqname, start - 1, end)
             } else {
@@ -355,7 +357,7 @@ mod tests {
     use super::*;
     use std::io::Write;
     use tempfile::NamedTempFile;
-    
+
     fn create_test_fasta() -> NamedTempFile {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, ">seq1").unwrap();
@@ -365,12 +367,12 @@ mod tests {
         writeln!(file, "AAAAAAAAAAAAAAAA").unwrap();
         file
     }
-    
+
     #[test]
     fn test_index_creation() {
         let fasta_file = create_test_fasta();
         let path = fasta_file.path().to_str().unwrap();
-        
+
         // This test might fail if htslib is not available
         // In a real scenario, you would have htslib installed
         match FastaIndex::new(path, FastaFormat::Fasta) {
@@ -383,12 +385,12 @@ mod tests {
             }
         }
     }
-    
+
     #[test]
     fn test_error_handling() {
         let result = FastaIndex::new("/nonexistent/file.fa", FastaFormat::Fasta);
         assert!(result.is_err());
-        
+
         match result.unwrap_err() {
             FastaError::IndexLoadError(_) => (),
             _ => panic!("Expected IndexLoadError"),

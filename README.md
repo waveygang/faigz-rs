@@ -1,5 +1,9 @@
 # faigz-rs
 
+[![CI](https://github.com/waveygang/faigz-rs/workflows/CI/badge.svg)](https://github.com/waveygang/faigz-rs/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-1.70.0%2B-blue.svg)](https://www.rust-lang.org)
+
 A Rust wrapper for the faigz reentrant FASTA/FASTQ index library.
 
 This library provides thread-safe, reentrant access to FASTA and FASTQ files using a shared index structure that can be safely accessed from multiple threads. It's built on top of the faigz C library, which provides a fully reentrant faidx implementation.
@@ -44,11 +48,74 @@ sudo make install
 
 ## Installation
 
+### From Git Repository
+
 Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-faigz-rs = "0.1.0"
+faigz-rs = { git = "https://github.com/waveygang/faigz-rs" }
+```
+
+Or for a specific branch/tag:
+
+```toml
+[dependencies]
+faigz-rs = { git = "https://github.com/waveygang/faigz-rs", branch = "main" }
+```
+
+### Building from Source
+
+1. **Clone the repository with submodules:**
+   ```bash
+   git clone --recursive https://github.com/waveygang/faigz-rs
+   cd faigz-rs
+   ```
+
+   Or if you already cloned without `--recursive`:
+   ```bash
+   git clone https://github.com/waveygang/faigz-rs
+   cd faigz-rs
+   git submodule update --init --recursive
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   # On Ubuntu/Debian
+   sudo apt-get update
+   sudo apt-get install build-essential libhts-dev pkg-config libclang-dev
+   
+   # On other systems, ensure you have:
+   # - C compiler (gcc/clang)
+   # - HTSlib development headers
+   # - pkg-config
+   # - libclang (for bindgen)
+   ```
+
+3. **Build the project:**
+   ```bash
+   cargo build --release
+   ```
+
+4. **Run tests:**
+   ```bash
+   cargo test
+   ```
+
+### Using in Your Project
+
+Once you've added faigz-rs to your dependencies, you can use it in your Rust project:
+
+```rust
+use faigz_rs::{FastaIndex, FastaReader, FastaFormat};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let index = FastaIndex::new("genome.fa", FastaFormat::Fasta)?;
+    let reader = FastaReader::new(&index)?;
+    let sequence = reader.fetch_seq("chr1", 1000, 1100)?;
+    println!("Sequence: {}", sequence);
+    Ok(())
+}
 ```
 
 ## Usage
@@ -229,9 +296,69 @@ The library is designed for high-performance multi-threaded access. The shared i
 2. **Thread safety**: Multiple readers can access the same file concurrently
 3. **Scalability**: Performance scales with the number of threads for read-heavy workloads
 
+## Development
+
+### Building from Source
+
+See the [Building from Source](#building-from-source) section above.
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test
+cargo test test_name
+
+# Run tests in release mode
+cargo test --release
+```
+
+### Code Quality
+
+This project uses several tools to ensure code quality:
+
+```bash
+# Format code
+cargo fmt
+
+# Check for common mistakes
+cargo clippy
+
+# Security audit
+cargo audit
+
+# Check for outdated dependencies
+cargo outdated
+```
+
+### Continuous Integration
+
+The project uses GitHub Actions for CI/CD with the following checks:
+
+- **Format check**: Ensures code is properly formatted
+- **Clippy**: Catches common mistakes and suggests improvements
+- **Tests**: Runs the full test suite on Linux
+- **Build**: Verifies all targets build successfully
+- **MSRV**: Tests minimum supported Rust version (1.70.0)
+- **No HTSlib**: Tests stub implementation without HTSlib
+- **Security audit**: Checks for known security vulnerabilities
+- **Dependency check**: Monitors for outdated dependencies
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit issues and pull requests.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Before submitting a pull request:
+
+1. Run the full test suite: `cargo test`
+2. Check formatting: `cargo fmt --all -- --check`
+3. Run clippy: `cargo clippy --all-targets --all-features -- -D warnings -A clippy::uninlined_format_args`
+4. Build examples: `cargo build --examples`
 
 ## License
 

@@ -3,12 +3,12 @@ use std::path::PathBuf;
 
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    
+
     // Tell cargo to look for shared libraries in the htslib path
     println!("cargo:rustc-link-search=native=/usr/local/lib");
     println!("cargo:rustc-link-search=native=/usr/lib");
     println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
-    
+
     // Link to htslib - make it optional for build testing
     // Only link if htslib is available
     if std::process::Command::new("pkg-config")
@@ -21,10 +21,10 @@ fn main() {
     } else {
         println!("cargo:warning=htslib not found, using stub implementation");
     }
-    
+
     // Tell cargo to invalidate the built crate whenever the header changes
     println!("cargo:rerun-if-changed=faigz/faigz.h");
-    
+
     // Build the wrapper C code that includes the faigz implementation
     cc::Build::new()
         .file("src/wrapper.c")
@@ -32,7 +32,7 @@ fn main() {
         .include("/usr/local/include")
         .include("/usr/include")
         .compile("faigz_wrapper");
-    
+
     // Generate bindings only if we can find the header
     if std::path::Path::new("faigz/faigz.h").exists() {
         let bindings = bindgen::Builder::default()
@@ -43,7 +43,7 @@ fn main() {
             .clang_arg("-I/usr/lib/gcc/x86_64-linux-gnu/*/include")
             .clang_arg("-DREENTRANT_FAIDX_IMPLEMENTATION")
             .generate();
-        
+
         match bindings {
             Ok(bindings) => {
                 bindings
@@ -53,7 +53,7 @@ fn main() {
             Err(e) => {
                 eprintln!("Warning: Could not generate bindings: {e:?}");
                 eprintln!("Creating minimal bindings...");
-                
+
                 // Create minimal bindings for compilation
                 let minimal_bindings = r#"
                     #[repr(C)]
@@ -105,7 +105,7 @@ fn main() {
                         ) -> *mut ::std::os::raw::c_char;
                     }
                 "#;
-                
+
                 std::fs::write(out_dir.join("bindings.rs"), minimal_bindings)
                     .expect("Couldn't write minimal bindings!");
             }
@@ -163,7 +163,7 @@ fn main() {
                 ) -> *mut ::std::os::raw::c_char;
             }
         "#;
-        
+
         std::fs::write(out_dir.join("bindings.rs"), minimal_bindings)
             .expect("Couldn't write minimal bindings!");
     }

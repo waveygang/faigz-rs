@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libhts-dev pkg-config libclang-dev
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build release
+      run: cargo build --release --verbose
+
+    - name: Run tests
+      run: cargo test --release --verbose
+
+    - name: Build examples
+      run: cargo build --examples --release --verbose
+
+    - name: Create release notes
+      run: |
+        echo "## Release Notes" > release_notes.md
+        echo "" >> release_notes.md
+        echo "### Features" >> release_notes.md
+        echo "- Thread-safe FASTA/FASTQ file access" >> release_notes.md
+        echo "- Reentrant index structure for multi-threaded applications" >> release_notes.md
+        echo "- Support for both FASTA and FASTQ formats" >> release_notes.md
+        echo "- Efficient memory usage with shared metadata" >> release_notes.md
+        echo "- Compatible with bgzip-compressed files" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### Installation" >> release_notes.md
+        echo "\`\`\`toml" >> release_notes.md
+        echo "[dependencies]" >> release_notes.md
+        echo "faigz-rs = { git = \"https://github.com/waveygang/faigz-rs\", tag = \"${{ github.ref_name }}\" }" >> release_notes.md
+        echo "\`\`\`" >> release_notes.md
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Test the release on different scenarios
+  test-release:
+    name: Test Release
+    runs-on: ubuntu-latest
+    needs: create-release
+    
+    steps:
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libhts-dev pkg-config libclang-dev
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Test installation from git
+      run: |
+        cargo init test-faigz-rs
+        cd test-faigz-rs
+        echo 'faigz-rs = { git = "https://github.com/waveygang/faigz-rs", tag = "${{ github.ref_name }}" }' >> Cargo.toml
+        echo 'use faigz_rs::{FastaIndex, FastaFormat};' > src/main.rs
+        echo 'fn main() { println!("faigz-rs imported successfully"); }' >> src/main.rs
+        cargo build --verbose
