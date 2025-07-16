@@ -38,6 +38,9 @@ use thiserror::Error;
 // Include the generated bindings
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
+// Constants from htslib faidx.h
+const FAI_CREATE: c_int = 0x01;
+
 /// Error types for FASTA operations
 #[derive(Error, Debug)]
 pub enum FastaError {
@@ -74,8 +77,8 @@ pub enum FastaFormat {
 impl From<FastaFormat> for fai_format_options {
     fn from(format: FastaFormat) -> Self {
         match format {
-            FastaFormat::Fasta => fai_format_options_FAI_FASTA,
-            FastaFormat::Fastq => fai_format_options_FAI_FASTQ,
+            FastaFormat::Fasta => FAI_FASTA,
+            FastaFormat::Fastq => FAI_FASTQ,
         }
     }
 }
@@ -112,7 +115,7 @@ impl FastaIndex {
     pub fn new(path: &str, format: FastaFormat) -> FastaResult<Self> {
         let c_path = CString::new(path).map_err(|_| FastaError::InvalidPath(path.to_string()))?;
 
-        let meta = unsafe { faidx_meta_load(c_path.as_ptr(), format.into(), 0) };
+        let meta = unsafe { faidx_meta_load(c_path.as_ptr(), format.into(), FAI_CREATE) };
 
         if meta.is_null() {
             return Err(FastaError::IndexLoadError(path.to_string()));
@@ -370,20 +373,12 @@ mod tests {
 
     #[test]
     fn test_index_creation() {
-        let fasta_file = create_test_fasta();
+        let mut fasta_file = create_test_fasta();
+        fasta_file.flush().unwrap(); // Ensure data is written
         let path = fasta_file.path().to_str().unwrap();
 
-        // This test might fail if htslib is not available
-        // In a real scenario, you would have htslib installed
-        match FastaIndex::new(path, FastaFormat::Fasta) {
-            Ok(index) => {
-                assert!(index.num_sequences() > 0);
-            }
-            Err(_) => {
-                // Skip test if htslib not available
-                println!("Skipping test - htslib not available");
-            }
-        }
+        let index = FastaIndex::new(path, FastaFormat::Fasta).unwrap();
+        assert!(index.num_sequences() > 0);
     }
 
     #[test]

@@ -69,9 +69,11 @@ fn main() {
                     #[allow(non_camel_case_types)]
                     pub type fai_format_options = ::std::os::raw::c_int;
                     #[allow(non_upper_case_globals)]
-                    pub const fai_format_options_FAI_FASTA: fai_format_options = 0;
+                    pub const FAI_NONE: fai_format_options = 0;
                     #[allow(non_upper_case_globals)]
-                    pub const fai_format_options_FAI_FASTQ: fai_format_options = 1;
+                    pub const FAI_FASTA: fai_format_options = 1;
+                    #[allow(non_upper_case_globals)]
+                    pub const FAI_FASTQ: fai_format_options = 2;
                     
                     extern "C" {
                         pub fn faidx_meta_load(
@@ -127,9 +129,11 @@ fn main() {
             #[allow(non_camel_case_types)]
             pub type fai_format_options = ::std::os::raw::c_int;
             #[allow(non_upper_case_globals)]
-            pub const fai_format_options_FAI_FASTA: fai_format_options = 0;
+            pub const FAI_NONE: fai_format_options = 0;
             #[allow(non_upper_case_globals)]
-            pub const fai_format_options_FAI_FASTQ: fai_format_options = 1;
+            pub const FAI_FASTA: fai_format_options = 1;
+            #[allow(non_upper_case_globals)]
+            pub const FAI_FASTQ: fai_format_options = 2;
             
             extern "C" {
                 pub fn faidx_meta_load(
