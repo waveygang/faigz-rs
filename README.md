@@ -16,34 +16,56 @@ This library provides thread-safe, reentrant access to FASTA and FASTQ files usi
 - **Format support**: Both FASTA and FASTQ formats are supported
 - **Compression support**: Works with bgzip-compressed files
 - **Zero-copy**: Efficient memory usage with minimal copying
+- **Command-line tool**: Includes a `faigz` binary for extracting sequences like `samtools faidx` and `bedtools getfasta`
 
 ## Prerequisites
 
-Before using this library, you need to have the following installed:
+This library requires **htslib** to be installed on your system. The library will **not work** without it.
 
-- **htslib**: The HTSlib library for high-throughput sequencing data
+### System Requirements
+
+- **htslib**: The HTSlib library for high-throughput sequencing data (required)
 - **C compiler**: GCC or Clang for building the C wrapper
 - **Rust**: Version 1.70 or later
+- **pkg-config**: For finding system libraries
 
 ### Installing htslib
 
-On Ubuntu/Debian:
+#### Ubuntu/Debian
 ```bash
-sudo apt-get install libhts-dev
+sudo apt-get update
+sudo apt-get install libhts-dev pkg-config build-essential
 ```
 
-On macOS:
+#### macOS
 ```bash
 brew install htslib
 ```
 
-On other systems, you can build from source:
+#### CentOS/RHEL/Fedora
+```bash
+# CentOS/RHEL
+sudo yum install htslib-devel pkgconfig gcc
+# or Fedora
+sudo dnf install htslib-devel pkgconfig gcc
+```
+
+#### From Source
 ```bash
 git clone https://github.com/samtools/htslib.git
 cd htslib
 ./configure
 make
 sudo make install
+sudo ldconfig  # Linux only
+```
+
+### Verification
+
+After installation, verify htslib is available:
+```bash
+pkg-config --libs htslib
+# Should output: -lhts
 ```
 
 ## Installation
@@ -97,7 +119,12 @@ faigz-rs = { git = "https://github.com/waveygang/faigz-rs", branch = "main" }
    cargo build --release
    ```
 
-4. **Run tests:**
+4. **Build the command-line tool:**
+   ```bash
+   cargo build --release --bin faigz
+   ```
+
+5. **Run tests:**
    ```bash
    cargo test
    ```
@@ -118,7 +145,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Usage
+## Command-Line Tool
+
+The `faigz` command-line tool provides a high-performance alternative to `samtools faidx` and `bedtools getfasta`.
+
+### Installation
+
+After building the project, you can install the tool globally:
+
+```bash
+cargo install --path . --bin faigz
+```
+
+### Usage
+
+```bash
+# Create a test FASTA file
+faigz create-test-file --output test.fa
+
+# Show sequence information (like samtools faidx -i)
+faigz info test.fa
+
+# Extract sequences using 0-based half-open coordinates (bedtools style)
+faigz extract test.fa chrX:0-1          # First character
+faigz extract test.fa chr1:10-20         # 10 characters from position 10
+faigz extract test.fa chr1 chr2          # Entire sequences
+
+# Extract using 1-based coordinates (samtools style)
+faigz extract test.fa chr1:11-20 --one-based
+
+# Compare with samtools faidx
+faigz compare test.fa chr1:10-20
+
+# Test multithreaded performance
+faigz thread-test test.fa --threads 8 --operations 1000
+```
+
+### Coordinate Systems
+
+The tool supports both coordinate systems:
+
+- **Default (0-based half-open)**: Compatible with `bedtools getfasta`
+  - `chrX:0-1` extracts the first character
+  - `chrX:0-5` extracts the first 5 characters
+  - Start is inclusive, end is exclusive
+
+- **1-based (--one-based flag)**: Compatible with `samtools faidx`
+  - `chrX:1-1` extracts the first character
+  - `chrX:1-5` extracts the first 5 characters
+  - Both start and end are inclusive
+
+### Performance
+
+The `faigz` tool is highly optimized for multithreaded access:
+
+```bash
+# Test with 8 threads extracting 1000 sequences each
+faigz thread-test genome.fa --threads 8 --operations 1000
+
+# Typical output:
+# Testing with 8 threads, 1000 operations per thread...
+# Total: 8000/8000 successful extractions
+# Time: 8.2ms
+# Rate: 975609.76 extractions/second
+```
+
+## Library Usage
 
 ### Basic Usage
 
@@ -262,15 +354,24 @@ The library uses the `FastaError` enum for error handling:
 
 ## Examples
 
-Run the basic usage example:
+### Command-Line Examples
+
 ```bash
-cargo run --example basic_usage genome.fa chr1
+# Create a test file and extract sequences
+cargo run --bin faigz create-test-file --output test.fa
+cargo run --bin faigz info test.fa
+cargo run --bin faigz extract test.fa chrX:0-1 chr1:10-20
+
+# Compare with samtools faidx
+cargo run --bin faigz compare test.fa chr1:10-20
+
+# Performance test
+cargo run --bin faigz thread-test test.fa --threads 8 --operations 1000
 ```
 
-Run the performance demonstration:
-```bash
-cargo run --example performance_demo genome.fa 8 1000
-```
+### Library Examples
+
+See the [Library Usage](#library-usage) section above for comprehensive examples.
 
 ## Testing
 
@@ -279,13 +380,23 @@ Run the test suite:
 cargo test
 ```
 
-Note: Some tests may be skipped if htslib is not properly installed, as they require actual FASTA file processing.
+**Note**: htslib is required for all tests to pass. If htslib is not properly installed, the tests will fail with index loading errors.
 
 ## Building
 
 To build the library:
 ```bash
 cargo build --release
+```
+
+To build the command-line tool:
+```bash
+cargo build --release --bin faigz
+```
+
+To install the command-line tool globally:
+```bash
+cargo install --path . --bin faigz
 ```
 
 ## Performance
@@ -345,9 +456,10 @@ The project uses GitHub Actions for CI/CD with the following checks:
 - **Tests**: Runs the full test suite on Linux
 - **Build**: Verifies all targets build successfully
 - **MSRV**: Tests minimum supported Rust version (1.70.0)
-- **No HTSlib**: Tests stub implementation without HTSlib
 - **Security audit**: Checks for known security vulnerabilities
 - **Dependency check**: Monitors for outdated dependencies
+
+**Note**: This library requires htslib and will not function without it. The old stub implementation has been removed.
 
 ## Contributing
 
