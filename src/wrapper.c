@@ -1,3 +1,2 @@
-// Real implementation that includes the faigz header-only library
-#define REENTRANT_FAIDX_IMPLEMENTATION
-#include "faigz.h"
+// Minimal implementation that includes the faigz minimal library
+#include "faigz_minimal.h"

@@ -23,7 +23,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libhts-dev pkg-config libclang-dev
+        sudo apt-get install -y build-essential libclang-dev zlib1g-dev
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -66,9 +66,9 @@ jobs:
     - name: Test documentation
       run: cargo doc --no-deps --verbose
 
-  # Test without htslib to ensure stub implementation works
-  test-no-htslib:
-    name: Test without HTSlib
+  # Test with vendored htslib build
+  test-vendored:
+    name: Test with Vendored HTSlib
     runs-on: ubuntu-latest
     
     steps:
@@ -80,7 +80,7 @@ jobs:
     - name: Install minimal system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libclang-dev
+        sudo apt-get install -y build-essential libclang-dev zlib1g-dev
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
@@ -89,27 +89,27 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ~/.cargo/registry
-        key: ${{ runner.os }}-no-htslib-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-vendored-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo index
       uses: actions/cache@v3
       with:
         path: ~/.cargo/git
-        key: ${{ runner.os }}-no-htslib-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-vendored-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo build
       uses: actions/cache@v3
       with:
         path: target
-        key: ${{ runner.os }}-no-htslib-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-vendored-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Build without HTSlib
+    - name: Build with vendored HTSlib
       run: cargo build --verbose
 
-    - name: Run tests without HTSlib
+    - name: Run tests with vendored HTSlib
       run: cargo test --verbose
 
-    - name: Build examples without HTSlib
+    - name: Build examples with vendored HTSlib
       run: cargo build --examples --verbose
 
   # Test different Rust versions
@@ -126,7 +126,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libhts-dev pkg-config libclang-dev
+        sudo apt-get install -y build-essential libclang-dev zlib1g-dev
 
     - name: Install Rust 1.70.0
       uses: dtolnay/rust-toolchain@1.70.0

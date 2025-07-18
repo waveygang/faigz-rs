@@ -4,44 +4,36 @@ use std::path::PathBuf;
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    // Tell cargo to look for shared libraries in the htslib path
-    println!("cargo:rustc-link-search=native=/usr/local/lib");
-    println!("cargo:rustc-link-search=native=/usr/lib");
-    println!("cargo:rustc-link-search=native=/usr/lib/x86_64-linux-gnu");
+    // Link to system libraries
+    println!("cargo:rustc-link-lib=z");  // Only link to zlib
+    println!("cargo:rustc-link-lib=pthread");  // For pthread support
+    
+    // Tell cargo to invalidate the built crate whenever files change
+    println!("cargo:rerun-if-changed=faigz/faigz_minimal.h");
+    println!("cargo:rerun-if-changed=faigz/faigz_minimal.c");
 
-    // Link to htslib - make it optional for build testing
-    // Only link if htslib is available
-    if std::process::Command::new("pkg-config")
-        .args(["--exists", "htslib"])
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
-    {
-        println!("cargo:rustc-link-lib=hts");
-    } else {
-        println!("cargo:warning=htslib not found, using stub implementation");
-    }
-
-    // Tell cargo to invalidate the built crate whenever the header changes
-    println!("cargo:rerun-if-changed=faigz/faigz.h");
+    // Build the minimal faigz implementation
+    cc::Build::new()
+        .file("faigz/faigz_minimal.c")
+        .include("faigz")
+        .flag_if_supported("-Wno-unused-parameter")
+        .flag_if_supported("-Wno-unused-function")
+        .flag_if_supported("-Wno-sign-compare")
+        .flag_if_supported("-Wno-unused-variable")
+        .compile("faigz_minimal");
 
     // Build the wrapper C code that includes the faigz implementation
     cc::Build::new()
         .file("src/wrapper.c")
         .include("faigz")
-        .include("/usr/local/include")
-        .include("/usr/include")
         .compile("faigz_wrapper");
 
     // Generate bindings only if we can find the header
-    if std::path::Path::new("faigz/faigz.h").exists() {
+    if std::path::Path::new("faigz/faigz_minimal.h").exists() {
         let bindings = bindgen::Builder::default()
-            .header("faigz/faigz.h")
+            .header("faigz/faigz_minimal.h")
             .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-            .clang_arg("-I/usr/local/include")
-            .clang_arg("-I/usr/include")
-            .clang_arg("-I/usr/lib/gcc/x86_64-linux-gnu/*/include")
-            .clang_arg("-DREENTRANT_FAIDX_IMPLEMENTATION")
+            .clang_arg("-Ifaigz")
             .generate();
 
         match bindings {
@@ -113,7 +105,7 @@ fn main() {
             }
         }
     } else {
-        eprintln!("Warning: faigz/faigz.h not found, using minimal bindings");
+        eprintln!("Warning: faigz/faigz_minimal.h not found, using minimal bindings");
         // Create minimal bindings for compilation
         let minimal_bindings = r#"
             #[repr(C)]
