@@ -9,13 +9,13 @@ fn main() {
     println!("cargo:rustc-link-lib=pthread");  // For pthread support
     
     // Tell cargo to invalidate the built crate whenever files change
-    println!("cargo:rerun-if-changed=faigz/faigz_minimal.h");
-    println!("cargo:rerun-if-changed=faigz/faigz_minimal.c");
+    println!("cargo:rerun-if-changed=faigz_minimal.h");
+    println!("cargo:rerun-if-changed=faigz_minimal.c");
 
     // Build the minimal faigz implementation
     cc::Build::new()
-        .file("faigz/faigz_minimal.c")
-        .include("faigz")
+        .file("faigz_minimal.c")
+        .include(".")
         .flag_if_supported("-Wno-unused-parameter")
         .flag_if_supported("-Wno-unused-function")
         .flag_if_supported("-Wno-sign-compare")
@@ -25,15 +25,15 @@ fn main() {
     // Build the wrapper C code that includes the faigz implementation
     cc::Build::new()
         .file("src/wrapper.c")
-        .include("faigz")
+        .include(".")
         .compile("faigz_wrapper");
 
     // Generate bindings only if we can find the header
-    if std::path::Path::new("faigz/faigz_minimal.h").exists() {
+    if std::path::Path::new("faigz_minimal.h").exists() {
         let bindings = bindgen::Builder::default()
-            .header("faigz/faigz_minimal.h")
+            .header("faigz_minimal.h")
             .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-            .clang_arg("-Ifaigz")
+            .clang_arg("-I.")
             .generate();
 
         match bindings {
@@ -105,7 +105,7 @@ fn main() {
             }
         }
     } else {
-        eprintln!("Warning: faigz/faigz_minimal.h not found, using minimal bindings");
+        eprintln!("Warning: faigz_minimal.h not found, using minimal bindings");
         // Create minimal bindings for compilation
         let minimal_bindings = r#"
             #[repr(C)]
