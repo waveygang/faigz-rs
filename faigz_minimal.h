@@ -30,6 +30,17 @@ typedef enum {
 // Position type
 typedef int64_t hts_pos_t;
 
+// GZI index structures for BGZF random access
+typedef struct {
+    uint64_t compressed_offset;
+    uint64_t uncompressed_offset;
+} gzi_entry_t;
+
+typedef struct {
+    gzi_entry_t *entries;
+    int n_entries;
+} gzi_index_t;
+
 // Index entry structure
 typedef struct {
     int id;
@@ -69,6 +80,9 @@ struct faidx_meta_t {
     
     // Flag indicating if the source is BGZF compressed
     int is_bgzf;
+    
+    // GZI index for BGZF random access
+    gzi_index_t *gzi_index;
 };
 
 // Reader structure containing thread-specific data
@@ -92,6 +106,15 @@ int faidx_meta_nseq(const faidx_meta_t *meta);
 const char *faidx_meta_iseq(const faidx_meta_t *meta, int i);
 hts_pos_t faidx_meta_seq_len(const faidx_meta_t *meta, const char *seq);
 int faidx_meta_has_seq(const faidx_meta_t *meta, const char *seq);
+
+// BGZF support functions
+gzi_index_t *load_gzi_index(const char *gzi_path);
+void destroy_gzi_index(gzi_index_t *index);
+int bgzf_read_block(gzFile fp, uint64_t coffset, char *buffer, int buffer_size);
+uint64_t find_bgzf_block(gzi_index_t *index, uint64_t uncompressed_offset);
+
+// Debug helper function
+faidx1_t *faidx_meta_get_entry(faidx_meta_t *meta, const char *seq_name);
 
 #ifdef __cplusplus
 }

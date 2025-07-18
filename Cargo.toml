@@ -25,7 +25,13 @@ bindgen = "0.69"
 [dev-dependencies]
 tempfile = "3.8"
 clap = { version = "4.0", features = ["derive"] }
+rand = "0.8"
 
 [[bin]]
 name = "faigz"
 path = "src/bin/faigz-demo.rs"
+
+[[bin]]
+name = "test_debug"
+path = "test_debug.rs"
+

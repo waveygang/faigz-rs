@@ -238,7 +238,7 @@ impl FastaReader {
 
         let mut len: i64 = 0;
         let seq_ptr = unsafe {
-            faidx_reader_fetch_seq(self.reader, c_seqname.as_ptr(), start, end - 1, &mut len)
+            faidx_reader_fetch_seq(self.reader, c_seqname.as_ptr(), start, end, &mut len)
         };
 
         if seq_ptr.is_null() {
