@@ -1,2 +1,2 @@
 // Minimal implementation that includes the faigz minimal library
-#include "faigz_minimal.h"
+#include "../faigz_minimal.h"
