@@ -5,9 +5,9 @@ fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     // Link to system libraries
-    println!("cargo:rustc-link-lib=z");  // Only link to zlib
-    println!("cargo:rustc-link-lib=pthread");  // For pthread support
-    
+    println!("cargo:rustc-link-lib=z"); // Only link to zlib
+    println!("cargo:rustc-link-lib=pthread"); // For pthread support
+
     // Tell cargo to invalidate the built crate whenever files change
     println!("cargo:rerun-if-changed=faigz_minimal.h");
     println!("cargo:rerun-if-changed=faigz_minimal.c");

@@ -35,7 +35,7 @@ fn test_basic_functionality() {
     let path = fasta_file.path().to_str().unwrap();
 
     let index = FastaIndex::new(path, FastaFormat::Fasta).unwrap();
-    
+
     // Test index metadata
     assert!(index.num_sequences() > 0);
 
@@ -162,7 +162,7 @@ fn test_clone_and_drop() {
     let path = fasta_file.path().to_str().unwrap();
 
     let index = FastaIndex::new(path, FastaFormat::Fasta).unwrap();
-    
+
     // Test cloning
     let index_clone = index.clone();
 
@@ -188,7 +188,7 @@ fn test_memory_safety() {
     let path = fasta_file.path().to_str().unwrap();
 
     let index = FastaIndex::new(path, FastaFormat::Fasta).unwrap();
-    
+
     // Create many readers and drop them
     for _i in 0..100 {
         let _reader = FastaReader::new(&index).unwrap();

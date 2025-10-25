@@ -1,10 +1,12 @@
 use clap::{Parser, Subcommand};
-use faigz_rs::{FastaIndex, FastaReader, FastaFormat};
+use faigz_rs::{FastaFormat, FastaIndex, FastaReader};
 use std::fs;
 
 #[derive(Parser)]
 #[command(name = "faigz")]
-#[command(about = "A high-performance tool for extracting sequences from FASTA files, compatible with samtools faidx and bedtools getfasta")]
+#[command(
+    about = "A high-performance tool for extracting sequences from FASTA files, compatible with samtools faidx and bedtools getfasta"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -68,13 +70,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Info { fasta } => {
             show_info(&fasta)?;
         }
-        Commands::Extract { fasta, regions, one_based } => {
+        Commands::Extract {
+            fasta,
+            regions,
+            one_based,
+        } => {
             extract_sequences(&fasta, &regions, one_based)?;
         }
-        Commands::ThreadTest { fasta, threads, operations } => {
+        Commands::ThreadTest {
+            fasta,
+            threads,
+            operations,
+        } => {
             thread_test(&fasta, threads, operations)?;
         }
-        Commands::Compare { fasta, region, one_based } => {
+        Commands::Compare {
+            fasta,
+            region,
+            one_based,
+        } => {
             compare_with_samtools(&fasta, &region, one_based)?;
         }
     }
@@ -106,11 +120,11 @@ CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
 
 fn show_info(fasta: &str) -> Result<(), Box<dyn std::error::Error>> {
     let index = FastaIndex::new(fasta, FastaFormat::Fasta)?;
-    
+
     println!("FASTA file: {}", fasta);
     println!("Number of sequences: {}", index.num_sequences());
     println!();
-    
+
     for i in 0..index.num_sequences() {
         if let Some(name) = index.sequence_name(i) {
             if let Some(length) = index.sequence_length(&name) {
@@ -118,14 +132,18 @@ fn show_info(fasta: &str) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     Ok(())
 }
 
-fn extract_sequences(fasta: &str, regions: &[String], one_based: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn extract_sequences(
+    fasta: &str,
+    regions: &[String],
+    one_based: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let index = FastaIndex::new(fasta, FastaFormat::Fasta)?;
     let reader = FastaReader::new(&index)?;
-    
+
     for region in regions {
         let result = if region.contains(':') {
             // Parse region like chr1:100-200
@@ -134,24 +152,24 @@ fn extract_sequences(fasta: &str, regions: &[String], one_based: bool) -> Result
                 eprintln!("Invalid region format: {}", region);
                 continue;
             }
-            
+
             let chr = parts[0];
             let range = parts[1];
-            
+
             if range.contains('-') {
                 let range_parts: Vec<&str> = range.split('-').collect();
                 if range_parts.len() != 2 {
                     eprintln!("Invalid range format: {}", range);
                     continue;
                 }
-                
-                let start: i64 = range_parts[0].parse().map_err(|e| {
-                    format!("Invalid start position '{}': {}", range_parts[0], e)
-                })?;
-                let end: i64 = range_parts[1].parse().map_err(|e| {
-                    format!("Invalid end position '{}': {}", range_parts[1], e)
-                })?;
-                
+
+                let start: i64 = range_parts[0]
+                    .parse()
+                    .map_err(|e| format!("Invalid start position '{}': {}", range_parts[0], e))?;
+                let end: i64 = range_parts[1]
+                    .parse()
+                    .map_err(|e| format!("Invalid end position '{}': {}", range_parts[1], e))?;
+
                 // Convert coordinates based on system
                 let (actual_start, actual_end) = if one_based {
                     // samtools faidx uses 1-based inclusive coordinates
@@ -161,14 +179,14 @@ fn extract_sequences(fasta: &str, regions: &[String], one_based: bool) -> Result
                     // bedtools uses 0-based half-open coordinates (start inclusive, end exclusive)
                     (start, end)
                 };
-                
+
                 reader.fetch_seq(chr, actual_start, actual_end)
             } else {
                 // Single position
-                let pos: i64 = range.parse().map_err(|e| {
-                    format!("Invalid position '{}': {}", range, e)
-                })?;
-                
+                let pos: i64 = range
+                    .parse()
+                    .map_err(|e| format!("Invalid position '{}': {}", range, e))?;
+
                 let actual_pos = if one_based { pos - 1 } else { pos };
                 reader.fetch_seq(chr, actual_pos, actual_pos + 1)
             }
@@ -176,7 +194,7 @@ fn extract_sequences(fasta: &str, regions: &[String], one_based: bool) -> Result
             // Whole sequence
             reader.fetch_seq_all(region)
         };
-        
+
         match result {
             Ok(sequence) => {
                 println!(">{}", region);
@@ -190,44 +208,51 @@ fn extract_sequences(fasta: &str, regions: &[String], one_based: bool) -> Result
             }
         }
     }
-    
+
     Ok(())
 }
 
-fn thread_test(fasta: &str, num_threads: usize, operations: usize) -> Result<(), Box<dyn std::error::Error>> {
+fn thread_test(
+    fasta: &str,
+    num_threads: usize,
+    operations: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::sync::Arc;
     use std::thread;
     use std::time::Instant;
-    
+
     let index = Arc::new(FastaIndex::new(fasta, FastaFormat::Fasta)?);
     let sequences = index.sequence_names();
-    
+
     if sequences.is_empty() {
         return Err("No sequences found in FASTA file".into());
     }
-    
-    println!("Testing with {} threads, {} operations per thread...", num_threads, operations);
-    
+
+    println!(
+        "Testing with {} threads, {} operations per thread...",
+        num_threads, operations
+    );
+
     let start = Instant::now();
     let mut handles = vec![];
-    
+
     for thread_id in 0..num_threads {
         let index_clone = Arc::clone(&index);
         let sequences_clone = sequences.clone();
-        
+
         let handle = thread::spawn(move || {
             let reader = FastaReader::new(&index_clone).unwrap();
             let mut success_count = 0;
-            
+
             for i in 0..operations {
                 let seq_name = &sequences_clone[i % sequences_clone.len()];
                 let seq_len = index_clone.sequence_length(seq_name).unwrap_or(0);
-                
+
                 if seq_len > 10 {
                     // Extract a small region
                     let start = (i as i64) % (seq_len - 10);
                     let end = start + 10;
-                    
+
                     match reader.fetch_seq(seq_name, start, end) {
                         Ok(seq) => {
                             if seq.len() == 10 {
@@ -238,35 +263,49 @@ fn thread_test(fasta: &str, num_threads: usize, operations: usize) -> Result<(),
                     }
                 }
             }
-            
+
             (thread_id, success_count)
         });
-        
+
         handles.push(handle);
     }
-    
+
     let mut total_success = 0;
     for handle in handles {
         let (thread_id, success_count) = handle.join().unwrap();
-        println!("Thread {}: {}/{} successful extractions", thread_id, success_count, operations);
+        println!(
+            "Thread {}: {}/{} successful extractions",
+            thread_id, success_count, operations
+        );
         total_success += success_count;
     }
-    
+
     let duration = start.elapsed();
-    println!("\nTotal: {}/{} successful extractions", total_success, num_threads * operations);
+    println!(
+        "\nTotal: {}/{} successful extractions",
+        total_success,
+        num_threads * operations
+    );
     println!("Time: {:?}", duration);
-    println!("Rate: {:.2} extractions/second", total_success as f64 / duration.as_secs_f64());
-    
+    println!(
+        "Rate: {:.2} extractions/second",
+        total_success as f64 / duration.as_secs_f64()
+    );
+
     Ok(())
 }
 
-fn compare_with_samtools(fasta: &str, region: &str, one_based: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn compare_with_samtools(
+    fasta: &str,
+    region: &str,
+    one_based: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
-    
+
     // Extract using faigz-rs
     let index = FastaIndex::new(fasta, FastaFormat::Fasta)?;
     let reader = FastaReader::new(&index)?;
-    
+
     let faigz_result = if region.contains(':') {
         let parts: Vec<&str> = region.split(':').collect();
         let chr = parts[0];
@@ -274,24 +313,24 @@ fn compare_with_samtools(fasta: &str, region: &str, one_based: bool) -> Result<(
         let range_parts: Vec<&str> = range.split('-').collect();
         let start: i64 = range_parts[0].parse()?;
         let end: i64 = range_parts[1].parse()?;
-        
+
         let (actual_start, actual_end) = if one_based {
             (start - 1, end)
         } else {
             (start, end)
         };
-        
+
         reader.fetch_seq(chr, actual_start, actual_end)?
     } else {
         reader.fetch_seq_all(region)?
     };
-    
+
     println!("=== faigz-rs result ===");
     println!(">{}", region);
     for line in faigz_result.as_bytes().chunks(80) {
         println!("{}", String::from_utf8_lossy(line));
     }
-    
+
     // Try to compare with samtools faidx if available
     let samtools_region = if one_based {
         region.to_string()
@@ -309,7 +348,7 @@ fn compare_with_samtools(fasta: &str, region: &str, one_based: bool) -> Result<(
             region.to_string()
         }
     };
-    
+
     match Command::new("samtools")
         .args(["faidx", fasta, &samtools_region])
         .output()
@@ -318,7 +357,7 @@ fn compare_with_samtools(fasta: &str, region: &str, one_based: bool) -> Result<(
             if output.status.success() {
                 println!("\n=== samtools faidx result ===");
                 println!("{}", String::from_utf8_lossy(&output.stdout));
-                
+
                 // Compare sequences (skip header line)
                 let samtools_seq = String::from_utf8_lossy(&output.stdout);
                 let samtools_lines: Vec<&str> = samtools_seq.lines().collect();
@@ -327,7 +366,7 @@ fn compare_with_samtools(fasta: &str, region: &str, one_based: bool) -> Result<(
                 } else {
                     String::new()
                 };
-                
+
                 if faigz_result == samtools_sequence {
                     println!("✅ Sequences match!");
                 } else {
@@ -340,13 +379,16 @@ fn compare_with_samtools(fasta: &str, region: &str, one_based: bool) -> Result<(
                     }
                 }
             } else {
-                eprintln!("samtools faidx failed: {}", String::from_utf8_lossy(&output.stderr));
+                eprintln!(
+                    "samtools faidx failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
             }
         }
         Err(_) => {
             println!("\n(samtools not available for comparison)");
         }
     }
-    
+
     Ok(())
 }
