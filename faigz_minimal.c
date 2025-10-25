@@ -357,19 +357,98 @@ void faidx_reader_destroy(faidx_reader_t *reader) {
 char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
                            hts_pos_t p_beg_i, hts_pos_t p_end_i, hts_pos_t *len) {
     if (!reader || !c_name) return NULL;
-    
+
     faidx1_t *entry = hash_get(reader->meta->hash, c_name);
     if (!entry) return NULL;
-    
+
     // Adjust coordinates
     if (p_beg_i < 0) p_beg_i = 0;
     if (p_end_i < 0 || p_end_i > entry->len) p_end_i = entry->len;
     if (p_beg_i >= p_end_i) return NULL;
-    
+
     hts_pos_t seq_len = p_end_i - p_beg_i;
     char *seq = malloc(seq_len + 1);
     if (!seq) return NULL;
-    
+
+    // Use FAI index to seek to the sequence position in the uncompressed stream
+    // gzseek works with uncompressed offsets in bgzip files
+    uint64_t seq_start_offset = entry->seq_offset;
+
+    // For BGZF files, gzseek to the uncompressed offset
+    if (gzseek(reader->gzfp, seq_start_offset, SEEK_SET) == -1) {
+        free(seq);
+        return NULL;
+    }
+
+    // Calculate how many bytes we need to skip newlines at start position
+    // Each line has line_blen bytes (including newline), with line_len bases
+    hts_pos_t lines_to_skip = p_beg_i / entry->line_blen;
+    hts_pos_t chars_in_line = p_beg_i % entry->line_blen;
+
+    // Skip ahead in the file
+    hts_pos_t skip_bytes = lines_to_skip * entry->line_len + chars_in_line;
+    if (skip_bytes > 0) {
+        if (gzseek(reader->gzfp, seq_start_offset + skip_bytes, SEEK_SET) == -1) {
+            free(seq);
+            return NULL;
+        }
+    }
+
+    // Read the sequence, skipping newlines
+    hts_pos_t read_len = 0;
+    char buffer[4096];
+    hts_pos_t remaining = seq_len;
+
+    while (remaining > 0) {
+        int to_read = (remaining < sizeof(buffer) - 1) ? remaining + 100 : sizeof(buffer) - 1;
+        int bytes_read = gzread(reader->gzfp, buffer, to_read);
+        if (bytes_read <= 0) break;
+
+        buffer[bytes_read] = '\0';
+
+        // Copy non-newline characters to output
+        for (int i = 0; i < bytes_read && read_len < seq_len; i++) {
+            char c = buffer[i];
+            if (c != '\n' && c != '\r') {
+                seq[read_len++] = c;
+            }
+            // Stop if we hit another sequence header
+            if (c == '>') break;
+        }
+
+        if (read_len >= seq_len) break;
+    }
+
+    seq[read_len] = '\0';
+
+    if (len) *len = read_len;
+
+    // Return NULL if we didn't read enough
+    if (read_len == 0) {
+        free(seq);
+        return NULL;
+    }
+
+    return seq;
+}
+
+// LEGACY CODE - keeping old implementation commented for reference
+char *faidx_reader_fetch_seq_OLD(faidx_reader_t *reader, const char *c_name,
+                           hts_pos_t p_beg_i, hts_pos_t p_end_i, hts_pos_t *len) {
+    if (!reader || !c_name) return NULL;
+
+    faidx1_t *entry = hash_get(reader->meta->hash, c_name);
+    if (!entry) return NULL;
+
+    // Adjust coordinates
+    if (p_beg_i < 0) p_beg_i = 0;
+    if (p_end_i < 0 || p_end_i > entry->len) p_end_i = entry->len;
+    if (p_beg_i >= p_end_i) return NULL;
+
+    hts_pos_t seq_len = p_end_i - p_beg_i;
+    char *seq = malloc(seq_len + 1);
+    if (!seq) return NULL;
+
     // BGZF implementation using GZI index for random access
     if (reader->meta->is_bgzf) {
         if (!reader->meta->gzi_index) {
@@ -377,13 +456,13 @@ char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
             free(seq);
             return NULL;
         }
-        
+
         // Calculate the uncompressed offset where the sequence starts
         uint64_t seq_start_offset = entry->seq_offset;
-        
+
         // Add the position within the sequence
         uint64_t target_offset = seq_start_offset;
-        
+
         // For this minimal implementation, we'll read from the sequence start
         // and then navigate to the right position
         // For sequences that start very early (like offset 15), use the beginning of the file
@@ -391,21 +470,21 @@ char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
         if (seq_start_offset > 1000) {
             compressed_offset = find_bgzf_block(reader->meta->gzi_index, seq_start_offset);
         }
-        
+
         // Create a larger buffer to read the block
         char *block_buffer = malloc(65536); // 64KB should be enough for most BGZF blocks
         if (!block_buffer) {
             free(seq);
             return NULL;
         }
-        
+
         int block_size = bgzf_read_block(reader->gzfp, compressed_offset, block_buffer, 65536);
         if (block_size <= 0) {
             free(block_buffer);
             free(seq);
             return NULL;
         }
-        
+
         // Now we need to parse the block to find our sequence and position
         // This is a simplified approach - we'll scan for the sequence header
         char *seq_start = NULL;
@@ -415,13 +494,13 @@ char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
             free(seq);
             return NULL;
         }
-        
+
         snprintf(search_pattern, strlen(c_name) + 2, ">%s", c_name);
         seq_start = strstr(block_buffer, search_pattern);
-        
-        
+
+
         free(search_pattern);
-        
+
         if (!seq_start) {
             // Sequence not found in this block - we may need to read more blocks
             // For now, return NULL
@@ -429,7 +508,7 @@ char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
             free(seq);
             return NULL;
         }
-        
+
         // Skip to the end of the header line
         char *line_end = strchr(seq_start, '\n');
         if (!line_end) {
@@ -437,13 +516,13 @@ char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
             free(seq);
             return NULL;
         }
-        
+
         char *seq_data = line_end + 1;
-        
+
         // Skip to the target position in the sequence
         hts_pos_t current_pos = 0;
         char *current_ptr = seq_data;
-        
+
         // Skip to start position
         while (current_pos < p_beg_i && *current_ptr) {
             if (*current_ptr != '\n' && *current_ptr != '\r' && *current_ptr != '>' && *current_ptr != '+') {
@@ -451,7 +530,7 @@ char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
             }
             current_ptr++;
         }
-        
+
         // Read the sequence
         hts_pos_t read_len = 0;
         while (read_len < seq_len && *current_ptr && current_pos < p_end_i) {

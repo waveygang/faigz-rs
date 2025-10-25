@@ -38,8 +38,8 @@ use thiserror::Error;
 // Include the generated bindings
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
-// Constants from htslib faidx.h
-const FAI_CREATE: c_int = 0x01;
+// Note: FAI_CREATE is defined in bindings.rs from the C header
+// Note: Enum constants are prefixed: fai_format_options_FAI_FASTA, etc.
 
 /// Error types for FASTA operations
 #[derive(Error, Debug)]
@@ -77,8 +77,8 @@ pub enum FastaFormat {
 impl From<FastaFormat> for fai_format_options {
     fn from(format: FastaFormat) -> Self {
         match format {
-            FastaFormat::Fasta => FAI_FASTA,
-            FastaFormat::Fastq => FAI_FASTQ,
+            FastaFormat::Fasta => fai_format_options_FAI_FASTA,
+            FastaFormat::Fastq => fai_format_options_FAI_FASTQ,
         }
     }
 }
@@ -115,7 +115,7 @@ impl FastaIndex {
     pub fn new(path: &str, format: FastaFormat) -> FastaResult<Self> {
         let c_path = CString::new(path).map_err(|_| FastaError::InvalidPath(path.to_string()))?;
 
-        let meta = unsafe { faidx_meta_load(c_path.as_ptr(), format.into(), FAI_CREATE) };
+        let meta = unsafe { faidx_meta_load(c_path.as_ptr(), format.into(), FAI_CREATE as c_int) };
 
         if meta.is_null() {
             return Err(FastaError::IndexLoadError(path.to_string()));
