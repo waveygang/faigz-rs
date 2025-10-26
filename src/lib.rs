@@ -115,10 +115,16 @@ impl FastaIndex {
     pub fn new(path: &str, format: FastaFormat) -> FastaResult<Self> {
         let c_path = CString::new(path).map_err(|_| FastaError::InvalidPath(path.to_string()))?;
 
-        let meta = unsafe { faidx_meta_load(c_path.as_ptr(), format.into(), FAI_CREATE as c_int) };
+        // Pass 0 (no flags) to only load existing index, never create
+        // This prevents trying to create index by reading bgzip files as plain text
+        let meta = unsafe { faidx_meta_load(c_path.as_ptr(), format.into(), 0) };
 
         if meta.is_null() {
-            return Err(FastaError::IndexLoadError(path.to_string()));
+            return Err(FastaError::IndexLoadError(format!(
+                "{}: Index file not found or failed to load. \
+                Create index with: samtools faidx {}",
+                path, path
+            )));
         }
 
         Ok(FastaIndex { meta })
