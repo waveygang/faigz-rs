@@ -370,61 +370,54 @@ char *faidx_reader_fetch_seq(faidx_reader_t *reader, const char *c_name,
     char *seq = malloc(seq_len + 1);
     if (!seq) return NULL;
 
-    // Use FAI index to seek to the sequence position in the uncompressed stream
-    // gzseek works with uncompressed offsets in bgzip files
-    uint64_t seq_start_offset = entry->seq_offset;
+    // Calculate file bytes to read using FAI layout info
+    // .fai gives us: line_blen (bases per line), line_len (bytes per line with \n)
+    hts_pos_t full_lines = seq_len / entry->line_blen;
+    hts_pos_t remaining_bases = seq_len % entry->line_blen;
+    hts_pos_t bytes_to_read = full_lines * entry->line_len + remaining_bases;
 
-    // For BGZF files, gzseek to the uncompressed offset
-    if (gzseek(reader->gzfp, seq_start_offset, SEEK_SET) == -1) {
+    // Allocate buffer for read (includes newlines)
+    char *raw_buffer = malloc(bytes_to_read + 1);
+    if (!raw_buffer) {
         free(seq);
         return NULL;
     }
 
-    // Calculate how many bytes we need to skip newlines at start position
-    // Each line has line_blen bytes (including newline), with line_len bases
-    hts_pos_t lines_to_skip = p_beg_i / entry->line_blen;
-    hts_pos_t chars_in_line = p_beg_i % entry->line_blen;
+    // ONE seek to sequence start + offset for p_beg_i
+    hts_pos_t start_line = p_beg_i / entry->line_blen;
+    hts_pos_t start_offset_in_line = p_beg_i % entry->line_blen;
+    hts_pos_t file_offset = entry->seq_offset + (start_line * entry->line_len) + start_offset_in_line;
 
-    // Skip ahead in the file
-    hts_pos_t skip_bytes = lines_to_skip * entry->line_len + chars_in_line;
-    if (skip_bytes > 0) {
-        if (gzseek(reader->gzfp, seq_start_offset + skip_bytes, SEEK_SET) == -1) {
-            free(seq);
-            return NULL;
+    if (gzseek(reader->gzfp, file_offset, SEEK_SET) == -1) {
+        free(seq);
+        free(raw_buffer);
+        return NULL;
+    }
+
+    // ONE read of all bytes
+    int bytes_read = gzread(reader->gzfp, raw_buffer, bytes_to_read);
+    if (bytes_read <= 0) {
+        free(seq);
+        free(raw_buffer);
+        return NULL;
+    }
+    raw_buffer[bytes_read] = '\0';
+
+    // Strip newlines in one pass
+    hts_pos_t write_pos = 0;
+    for (int i = 0; i < bytes_read && write_pos < seq_len; i++) {
+        char c = raw_buffer[i];
+        if (c != '\n' && c != '\r') {
+            seq[write_pos++] = c;
         }
     }
 
-    // Read the sequence, skipping newlines
-    hts_pos_t read_len = 0;
-    char buffer[4096];
-    hts_pos_t remaining = seq_len;
+    free(raw_buffer);
+    seq[write_pos] = '\0';
 
-    while (remaining > 0) {
-        int to_read = (remaining < sizeof(buffer) - 1) ? remaining + 100 : sizeof(buffer) - 1;
-        int bytes_read = gzread(reader->gzfp, buffer, to_read);
-        if (bytes_read <= 0) break;
+    if (len) *len = write_pos;
 
-        buffer[bytes_read] = '\0';
-
-        // Copy non-newline characters to output
-        for (int i = 0; i < bytes_read && read_len < seq_len; i++) {
-            char c = buffer[i];
-            if (c != '\n' && c != '\r') {
-                seq[read_len++] = c;
-            }
-            // Stop if we hit another sequence header
-            if (c == '>') break;
-        }
-
-        if (read_len >= seq_len) break;
-    }
-
-    seq[read_len] = '\0';
-
-    if (len) *len = read_len;
-
-    // Return NULL if we didn't read enough
-    if (read_len == 0) {
+    if (write_pos == 0) {
         free(seq);
         return NULL;
     }
